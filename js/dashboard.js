@@ -34,10 +34,10 @@ async function checkServerStatus() {
         
         if (response.ok) {
             const data = await response.json();
-            updateServerUI(true, `🟢 Online - ${data.model || 'Attivo'}`);
+            updateServerUI(true, `🟢 Online - Pronto`);
             const modelInfo = document.getElementById('serverModelInfo');
             if (modelInfo) {
-                modelInfo.textContent = `Modello: ${data.model || 'AI Attivo'} | Pronto a generare contenuti`;
+                modelInfo.textContent = `Backend Hugging Face | Pronto a generare contenuti`;
             }
             return true;
         } else {
@@ -90,7 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ============================================
 function openModal(service) {
     if (!serverOnline) {
-        alert('⚠️ Il server AI non è attivo.\n\nAttendi che il founder avvii il backend su Google Colab.\n\nControlla lo stato nel pannello admin.');
+        alert('⚠️ Il server AI non è attivo.\n\nControlla lo stato o attendi il riavvio automatico.');
         return;
     }
     
@@ -201,7 +201,7 @@ function formatFileSize(bytes) {
 }
 
 // ============================================
-// GENERATE CONTENT - SOLO BACKEND REALE
+// GENERATE CONTENT - INPUT FLESSIBILI
 // ============================================
 async function generateContent() {
     const textInput = document.getElementById('textInput')?.value.trim() || '';
@@ -210,13 +210,14 @@ async function generateContent() {
     const includeImages = document.getElementById('includeImages')?.checked || false;
     const user = getCurrentUser();
     
+    // INPUT FLESSIBILE: testo OPPURE file OPPURE link (almeno uno)
     if (!textInput && selectedFiles.length === 0 && !link) {
         alert('⚠️ Inserisci del testo, carica un file o incolla un link per continuare.');
         return;
     }
     
     if (!serverOnline) {
-        alert('🔴 Il server AI non è attivo. Non posso generare contenuti.\n\nAttendi che il founder avvii Colab.');
+        alert('🔴 Il server AI non è attivo.');
         return;
     }
     
@@ -263,7 +264,7 @@ async function generateContent() {
 }
 
 // ============================================
-// CHIAMATA REALE AL BACKEND COLAB
+// CHIAMATA REALE AL BACKEND
 // ============================================
 async function callColabBackend(service, textInput, files, link, customPrompt, includeImages) {
     const formData = new FormData();
