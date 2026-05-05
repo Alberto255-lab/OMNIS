@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - OMNIS</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="logo">
+                <div class="logo-icon">O</div>
+                <span class="logo-text">OMNIS Admin</span>
+            </a>
+            <div class="nav-links" id="navLinks">
+                <a href="dashboard.html">Dashboard</a>
+                <a href="gazzetta.html">Gazzetta</a>
+                <div class="nav-user" id="navUser"></div>
+                <button class="btn-logout" onclick="logout()">Esci</button>
+            </div>
+            <button class="menu-toggle" id="menuToggle">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+    </nav>
+
+    <main class="admin-page">
+        <div class="container">
+            <h1>🔐 Pannello di Amministrazione</h1>
+            
+            <!-- Colab Status -->
+            <div class="colab-status" id="colabStatus">
+                <h3>
+                    <span class="status-dot" id="colabStatusDot"></span>
+                    Stato Colab AI Backend
+                </h3>
+                <div class="timer-grid">
+                    <div class="timer-item">
+                        <span class="timer-value" id="colabUptime">--:--:--</span>
+                        <span class="timer-label">Tempo Attivo</span>
+                    </div>
+                    <div class="timer-item">
+                        <span class="timer-value" id="colabRemaining">--:--:--</span>
+                        <span class="timer-label">Tempo Rimanente</span>
+                    </div>
+                    <div class="timer-item">
+                        <span class="timer-value" id="colabRequests">0</span>
+                        <span class="timer-label">Richieste Oggi</span>
+                    </div>
+                    <div class="timer-item">
+                        <span class="timer-value" id="colabStatusText">Offline</span>
+                        <span class="timer-label">Stato Server</span>
+                    </div>
+                </div>
+                <div id="colabWarning"></div>
+                <div class="colab-url-display" id="colabUrl">Nessun URL Colab configurato</div>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Generazioni Totali</h3>
+                    <div class="big-number" id="totalGenerations">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Generazioni Oggi</h3>
+                    <div class="big-number" id="dailyGenerations">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Utenti Registrati</h3>
+                    <div class="big-number" id="totalUsers">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Progetti in Gazzetta</h3>
+                    <div class="big-number" id="gazzettaCount">0</div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="admin-tabs">
+                <button class="admin-tab active" onclick="switchTab('users')">👥 Utenti</button>
+                <button class="admin-tab" onclick="switchTab('moderation')">🛡️ Moderazione</button>
+                <button class="admin-tab" onclick="switchTab('settings')">⚙️ Impostazioni</button>
+            </div>
+
+            <!-- Users Panel -->
+            <div class="panel-section active" id="panel-users">
+                <div class="admin-actions">
+                    <h3>Tutti gli Utenti Registrati</h3>
+                    <div style="overflow-x:auto;">
+                        <table class="users-table">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Ruolo</th>
+                                    <th>Progetti</th>
+                                    <th>Registrato il</th>
+                                    <th>Ultimo Accesso</th>
+                                    <th>Azioni</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody">
+                                <tr><td colspan="7" style="text-align:center;color:var(--text-muted);">Caricamento utenti...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Moderation Panel -->
+            <div class="panel-section" id="panel-moderation">
+                <div class="admin-actions">
+                    <h3>Contenuti in Gazzetta</h3>
+                    <div class="moderation-list" id="moderationList">
+                        <p style="color:var(--text-muted);">Nessun contenuto da moderare</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Panel -->
+            <div class="panel-section" id="panel-settings">
+                <div class="admin-actions">
+                    <h3>Configurazione Colab</h3>
+                    <div class="form-group">
+                        <label>URL Ngrok del Backend Colab</label>
+                        <input type="url" id="colabUrlInput" class="input-field" placeholder="https://xxxx-xx-xx-xxx-xx.ngrok-free.app">
+                    </div>
+                    <button class="btn-secondary" onclick="saveColabUrl()">💾 Salva URL</button>
+                </div>
+                <div class="admin-actions">
+                    <h3>Cambia Password Admin</h3>
+                    <div class="form-group">
+                        <label>Nuova Password</label>
+                        <input type="password" id="newAdminPassword" class="input-field" placeholder="Nuova password (min. 6 caratteri)">
+                    </div>
+                    <button class="btn-secondary" onclick="changeAdminPassword()">🔒 Aggiorna Password</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Conferma Eliminazione Utente -->
+    <div class="modal" id="deleteUserModal">
+        <div class="modal-overlay" onclick="closeDeleteUserModal()"></div>
+        <div class="modal-content" style="max-width:400px;">
+            <div class="modal-header">
+                <h2>🗑️ Elimina Utente</h2>
+                <button class="modal-close" onclick="closeDeleteUserModal()">✕</button>
+            </div>
+            <div class="modal-body" style="text-align:center;">
+                <p style="margin-bottom:20px;">Sei sicuro di voler eliminare questo utente?</p>
+                <p style="color:var(--red); font-size:0.9rem; margin-bottom:10px;">Verranno eliminati anche tutti i suoi progetti.</p>
+                <p style="color:var(--red); font-size:0.9rem; margin-bottom:20px;">Questa azione non può essere annullata.</p>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn-secondary" onclick="closeDeleteUserModal()" style="flex:1;">Annulla</button>
+                    <button class="btn-delete-confirm" id="confirmDeleteUserBtn" style="flex:1;">🗑️ Elimina</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>

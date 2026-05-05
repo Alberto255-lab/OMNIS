@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>La Gazzetta - OMNIS</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="logo">
+                <div class="logo-icon">O</div>
+                <span class="logo-text">OMNIS</span>
+            </a>
+            <div class="nav-links" id="navLinks">
+                <a href="dashboard.html">Dashboard</a>
+                <a href="gazzetta.html" class="active">Gazzetta</a>
+                <div class="nav-user" id="navUser"></div>
+                <button class="btn-logout" onclick="logout()">Esci</button>
+            </div>
+            <button class="menu-toggle" id="menuToggle">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+    </nav>
+
+    <main class="gazzetta-page">
+        <div class="container">
+            <div class="gazzetta-header">
+                <h1>📰 La Gazzetta di Omnis</h1>
+                <p style="color:var(--text-secondary);">Scopri i progetti condivisi dalla community</p>
+            </div>
+            <div class="filters">
+                <button class="filter-btn active" onclick="filterGazzetta('all')">Tutti</button>
+                <button class="filter-btn" onclick="filterGazzetta('summary')">📝 Riassunti</button>
+                <button class="filter-btn" onclick="filterGazzetta('mindmap')">🗺️ Mappe</button>
+                <button class="filter-btn" onclick="filterGazzetta('quiz')">❓ Quiz</button>
+            </div>
+            <div class="gazzetta-grid" id="gazzettaGrid">
+                <p class="empty-state">Caricamento progetti...</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/gazzetta.js"></script>
+</body>
+</html>
