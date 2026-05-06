@@ -35,7 +35,6 @@ async function checkServerStatus() {
         clearTimeout(timeoutId);
         
         if (response.ok) {
-            const data = await response.json();
             updateServerUI(true, '🟢 Online - Pronto');
             return true;
         } else {
@@ -126,10 +125,9 @@ function showResultFullpage(content, service) {
                 <div class="result-page-header">
                     <h2>${names[service] || 'Risultato'}</h2>
                     <div class="result-page-actions">
-                        <button class="btn-icon" onclick="copyResultFullpage()">📋</button>
-                        <button class="btn-icon" onclick="downloadResultFullpage()">📄</button>
-                        <button class="btn-icon" onclick="shareResultFullpage()">📤</button>
-                        <button class="btn-icon" onclick="closeResultFullpage()">✕</button>
+                        <button class="btn-icon" onclick="downloadResultFullpage()">📄 Scarica</button>
+                        <button class="btn-icon" onclick="shareResultFullpage()">📤 Condividi</button>
+                        <button class="btn-icon" onclick="closeResultFullpage()">✕ Chiudi</button>
                     </div>
                 </div>
                 <div class="result-page-body">
@@ -149,14 +147,17 @@ function closeResultFullpage() {
     if (el) el.remove();
 }
 
-function copyResultFullpage() {
-    if (_lastGeneratedContent) {
-        navigator.clipboard.writeText(_lastGeneratedContent).then(() => alert('✅ Copiato!'));
-    }
-}
-
 function downloadResultFullpage() {
-    if (_lastGeneratedContent) {
+    if (!_lastGeneratedContent) return;
+    
+    if (_lastGeneratedService === 'mindmap') {
+        // Scarica PNG
+        const link = document.createElement('a');
+        link.download = `mappa-omnis-${Date.now()}.png`;
+        link.href = _lastGeneratedContent.match(/src="([^"]+)"/)?.[1] || _lastGeneratedContent;
+        link.click();
+    } else {
+        // Scarica TXT
         const blob = new Blob([_lastGeneratedContent], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -201,7 +202,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ============================================
-// MODAL (FIXATA - nessun null error)
+// MODAL
 // ============================================
 function openModal(service) {
     if (!serverOnline) {
@@ -417,9 +418,11 @@ async function callColabBackend(service, textInput, files, link, customPrompt, i
 }
 
 async function callColabBackendMindmap(textInput, files, link, customPrompt) {
+    console.log('🗺️ MINDMAP REQUEST - textInput length:', textInput.length);
+    
     const formData = new FormData();
-    formData.append('text_input', textInput);
-    formData.append('custom_prompt', customPrompt);
+    formData.append('text_input', textInput || 'testo di default per mappa');
+    formData.append('custom_prompt', customPrompt || '');
     if (link) formData.append('link', link);
     
     for (const file of files) {
@@ -430,6 +433,8 @@ async function callColabBackendMindmap(textInput, files, link, customPrompt) {
     const timeoutId = setTimeout(() => controller.abort(), 180000);
     
     try {
+        console.log('📡 Calling:', `${CONFIG.COLAB_URL}/api/mindmap-image`);
+        
         const response = await fetch(`${CONFIG.COLAB_URL}/api/mindmap-image`, {
             method: 'POST',
             body: formData,
@@ -438,14 +443,23 @@ async function callColabBackendMindmap(textInput, files, link, customPrompt) {
         
         clearTimeout(timeoutId);
         
-        if (!response.ok) throw new Error('Errore generazione mappa');
+        console.log('📡 Response status:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Server error:', errorText);
+            throw new Error('Errore generazione mappa (status: ' + response.status + ')');
+        }
         
         const data = await response.json();
+        console.log('✅ Success:', data.success, '| Image base64 length:', data.image_base64?.length || 0);
+        
         if (!data.image_base64) throw new Error('Nessuna immagine ricevuta');
         
         return `<img src="data:image/png;base64,${data.image_base64}" style="max-width:100%;border-radius:12px;" alt="Mappa Concettuale">`;
         
     } catch (error) {
+        console.error('❌ MINDMAP ERROR:', error);
         throw error;
     }
 }
@@ -486,7 +500,7 @@ function loadProjects() {
             <div onclick="viewProject(${project.id})" style="cursor:pointer;">
                 <h4>${getServiceIcon(project.service)} ${getServiceName(project.service)}</h4>
                 <p class="project-meta">${formatDate(project.date)}</p>
-                <p class="project-preview">${escapeHtml(project.content.substring(0, 100))}...</p>
+                <p class="project-preview">${project.service === 'mindmap' ? '[Immagine mappa]' : escapeHtml(project.content.substring(0, 100)) + '...'}</p>
             </div>
             <button class="btn-delete-project" onclick="event.stopPropagation(); openDeleteModal(${project.id})">🗑️</button>
         </div>
