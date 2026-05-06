@@ -1,477 +1,154 @@
-// ============================================
-// OMNIS Dashboard - REAL BACKEND ONLY
-// ============================================
-
-if (!requireAuth()) throw new Error('Auth required');
-
-let currentService = '';
-let selectedFiles = [];
-let serverOnline = false;
-let projectToDelete = null;
-let _lastGeneratedContent = null;
-let _lastGeneratedService = null;
-
-// ============================================
-// SERVER STATUS CHECK
-// ============================================
-async function checkServerStatus() {
-    const statusText = document.getElementById('serverStatusText');
-    const offlineBanner = document.getElementById('serverStatusBanner');
-    const onlineBanner = document.getElementById('serverOnlineBanner');
-    
-    if (!CONFIG.COLAB_URL) {
-        updateServerUI(false, 'Server AI non configurato.');
-        return false;
-    }
-    
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        
-        const response = await fetch(`${CONFIG.COLAB_URL}/api/health`, {
-            signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-            const data = await response.json();
-            updateServerUI(true, `🟢 Online - Pronto`);
-            return true;
-        } else {
-            updateServerUI(false, '🔴 Server Offline');
-            return false;
-        }
-    } catch (error) {
-        updateServerUI(false, '🔴 Server non raggiungibile');
-        return false;
-    }
-}
-
-function updateServerUI(online, message) {
-    serverOnline = online;
-    const statusText = document.getElementById('serverStatusText');
-    const offlineBanner = document.getElementById('serverStatusBanner');
-    const onlineBanner = document.getElementById('serverOnlineBanner');
-    
-    if (statusText) {
-        statusText.textContent = message;
-        statusText.style.color = online ? '#10B981' : '#ef4444';
-    }
-    
-    if (offlineBanner && onlineBanner) {
-        if (online) {
-            offlineBanner.style.display = 'none';
-            onlineBanner.style.display = 'block';
-        } else {
-            offlineBanner.style.display = 'block';
-            onlineBanner.style.display = 'none';
-        }
-    }
-}
-
-// ============================================
-// FULL PAGE LOADING
-// ============================================
-function showFullpageLoading() {
-    if (!document.getElementById('loadingFullpage')) {
-        const html = `
-            <div class="loading-fullpage" id="loadingFullpage">
-                <div class="spinner"></div>
-                <span class="loading-sparkles">✨</span>
-                <h2>OMNIS sta generando...</h2>
-                <p id="loadingStatus">Analisi del contenuto in corso</p>
-                <div class="loading-progress">
-                    <div class="loading-progress-bar"></div>
-                </div>
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - OMNIS</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🧠</text></svg>">
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="logo">
+                <div class="logo-icon">O</div>
+                <span class="logo-text">OMNIS</span>
+            </a>
+            <div class="nav-links" id="navLinks">
+                <a href="dashboard.html" class="active">Dashboard</a>
+                <a href="gazzetta.html">Gazzetta</a>
+                <div class="nav-user" id="navUser"></div>
+                <a href="admin.html" class="btn-nav" id="adminBtn" style="display:none;">Admin</a>
+                <button class="btn-logout" onclick="logout()">Esci</button>
             </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', html);
-    }
-    document.getElementById('loadingFullpage').classList.add('active');
-}
+            <button class="menu-toggle" id="menuToggle">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+    </nav>
 
-function hideFullpageLoading() {
-    const el = document.getElementById('loadingFullpage');
-    if (el) el.classList.remove('active');
-}
-
-function setLoadingStatus(text) {
-    const el = document.getElementById('loadingStatus');
-    if (el) el.textContent = text;
-}
-
-// ============================================
-// FULL PAGE RESULT
-// ============================================
-function showResultFullpage(content, service) {
-    const old = document.getElementById('resultFullpage');
-    if (old) old.remove();
-    
-    const names = {
-        'summary': '📝 Riassunto',
-        'mindmap': '🗺️ Mappa Concettuale',
-        'quiz': '❓ Quiz'
-    };
-    
-    const html = `
-        <div class="result-fullpage" id="resultFullpage">
-            <div class="result-overlay" onclick="closeResultFullpage()"></div>
-            <div class="result-page-content">
-                <div class="result-page-header">
-                    <h2>${names[service] || 'Risultato'}</h2>
-                    <div class="result-page-actions">
-                        <button class="btn-icon" onclick="copyResultFullpage()">📋</button>
-                        <button class="btn-icon" onclick="downloadResultFullpage()">📄</button>
-                        <button class="btn-icon" onclick="shareResultFullpage()">📤</button>
-                        <button class="btn-icon" onclick="closeResultFullpage()">✕</button>
+    <main class="dashboard">
+        <div class="container">
+            <div id="serverStatusBanner" class="server-banner-container" style="display:none;">
+                <div class="server-banner-card">
+                    <div class="server-banner-icon">🔴</div>
+                    <div class="server-banner-text">
+                        <strong>OMNIS non è attivo</strong>
+                        <p>Il server AI non è raggiungibile.</p>
                     </div>
                 </div>
-                <div class="result-page-body">
-                    <pre class="result-page-text">${escapeHtml(content)}</pre>
+            </div>
+
+            <div id="serverOnlineBanner" class="server-banner-container" style="display:none;">
+                <div class="server-banner-card online">
+                    <div class="server-banner-icon">🟢</div>
+                    <div class="server-banner-text">
+                        <strong>Server AI Online</strong>
+                        <p>Pronto a generare contenuti</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-header">
+                <h1>Cosa vuoi creare oggi?</h1>
+                <p id="serverStatusText">Verifica connessione...</p>
+            </div>
+
+            <div class="services-grid">
+                <div class="service-card" onclick="openModal('summary')">
+                    <div class="service-icon-wrap icon-purple">📝</div>
+                    <h3>Riassunto</h3>
+                    <p>Crea riassunti concisi e dettagliati</p>
+                    <button class="btn-service">Crea Riassunto</button>
+                </div>
+                <div class="service-card" onclick="openModal('mindmap')">
+                    <div class="service-icon-wrap icon-cyan">🗺️</div>
+                    <h3>Mappa Concettuale</h3>
+                    <p>Visualizza i concetti in mappe gerarchiche</p>
+                    <button class="btn-service">Crea Mappa</button>
+                </div>
+                <div class="service-card" onclick="openModal('quiz')">
+                    <div class="service-icon-wrap icon-emerald">❓</div>
+                    <h3>Quiz</h3>
+                    <p>Testa la tua preparazione con quiz</p>
+                    <button class="btn-service">Crea Quiz</button>
+                </div>
+            </div>
+
+            <div class="modal" id="uploadModal">
+                <div class="modal-overlay" onclick="closeModal()"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 id="modalTitle">Crea Contenuto</h2>
+                        <button class="modal-close" onclick="closeModal()">✕</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label>Incolla il tuo testo</label>
+                            <textarea id="textInput" rows="6" class="input-field" placeholder="Incolla qui il testo..."></textarea>
+                            <span class="input-hint">Incolla testo oppure carica un file</span>
+                        </div>
+                        <div class="form-divider"><span>oppure</span></div>
+                        <div class="form-group">
+                            <label>Carica file</label>
+                            <div class="upload-area" id="uploadArea">
+                                <div class="upload-icon">📁</div>
+                                <p>Trascina i file qui o clicca</p>
+                                <input type="file" id="fileInput" multiple hidden>
+                            </div>
+                            <div class="file-list" id="fileList"></div>
+                        </div>
+                        <div class="form-group">
+                            <label>Oppure incolla un link</label>
+                            <input type="url" id="linkInput" placeholder="https://..." class="input-field">
+                        </div>
+                        <div class="form-group">
+                            <label>Istruzioni (opzionale)</label>
+                            <textarea id="customPrompt" rows="2" class="input-field" placeholder="Es: Voglio un riassunto diviso in sezioni..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <div class="toggle-row">
+                                <span>Includi immagini</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="includeImages">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <button class="btn-generate" id="generateBtn" onclick="generateContent()">Genera Contenuto</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal" id="deleteModal">
+                <div class="modal-overlay" onclick="closeDeleteModal()"></div>
+                <div class="modal-content" style="max-width:400px;">
+                    <div class="modal-header">
+                        <h2>Elimina Progetto</h2>
+                        <button class="modal-close" onclick="closeDeleteModal()">✕</button>
+                    </div>
+                    <div class="modal-body" style="text-align:center;">
+                        <p style="margin-bottom:20px;">Sei sicuro?</p>
+                        <div style="display:flex;gap:10px;">
+                            <button class="btn-secondary" onclick="closeDeleteModal()" style="flex:1;">Annulla</button>
+                            <button class="btn-delete-confirm" id="confirmDeleteBtn" style="flex:1;">Elimina</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="saved-section">
+                <h2>I tuoi progetti recenti</h2>
+                <div class="projects-grid" id="projectsGrid">
+                    <p class="empty-state">Nessun progetto ancora.</p>
                 </div>
             </div>
         </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', html);
-    _lastGeneratedContent = content;
-    _lastGeneratedService = service;
-}
+    </main>
 
-function closeResultFullpage() {
-    const el = document.getElementById('resultFullpage');
-    if (el) el.remove();
-}
-
-function copyResultFullpage() {
-    if (_lastGeneratedContent) {
-        navigator.clipboard.writeText(_lastGeneratedContent).then(() => alert('✅ Copiato!'));
-    }
-}
-
-function downloadResultFullpage() {
-    if (_lastGeneratedContent) {
-        const blob = new Blob([_lastGeneratedContent], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `omnis-${_lastGeneratedService || 'content'}-${Date.now()}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
-    }
-}
-
-function shareResultFullpage() {
-    if (_lastGeneratedContent && confirm('📤 Condividere nella Gazzetta?')) {
-        const user = getCurrentUser();
-        const gazzetta = JSON.parse(localStorage.getItem(STORAGE_KEYS.GAZZETTA) || '[]');
-        gazzetta.unshift({
-            id: Date.now(),
-            userName: user.username,
-            service: _lastGeneratedService,
-            content: _lastGeneratedContent,
-            date: new Date().toISOString()
-        });
-        localStorage.setItem(STORAGE_KEYS.GAZZETTA, JSON.stringify(gazzetta.slice(0, 100)));
-        alert('✅ Condiviso!');
-    }
-}
-
-// ============================================
-// INIT
-// ============================================
-document.addEventListener('DOMContentLoaded', async () => {
-    updateNavbar();
-    loadProjects();
-    serverOnline = await checkServerStatus();
-    setInterval(checkServerStatus, CONFIG.COLAB_CHECK_INTERVAL);
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            closeModal();
-            closeDeleteModal();
-            closeResultFullpage();
-        }
-    });
-});
-
-// ============================================
-// MODAL
-// ============================================
-function openModal(service) {
-    if (!serverOnline) {
-        alert('⚠️ Il server AI non è attivo.');
-        return;
-    }
-    
-    currentService = service;
-    const modal = document.getElementById('uploadModal');
-    const titles = {
-        'summary': '📝 Crea Riassunto',
-        'mindmap': '🗺️ Crea Mappa Concettuale',
-        'quiz': '❓ Crea Quiz'
-    };
-    
-    document.getElementById('modalTitle').textContent = titles[service] || 'Crea Contenuto';
-    modal.classList.add('active');
-    document.body.style.overflow = 'hidden';
-    
-    document.getElementById('resultSection').style.display = 'none';
-    document.getElementById('errorBlock').style.display = 'none';
-    document.getElementById('loadingBlock').style.display = 'none';
-    document.getElementById('generateBtn').style.display = 'block';
-    document.getElementById('textInput').value = '';
-    document.getElementById('customPrompt').value = '';
-    document.getElementById('linkInput').value = '';
-    selectedFiles = [];
-    updateFileList();
-}
-
-function closeModal() {
-    document.getElementById('uploadModal').classList.remove('active');
-    document.body.style.overflow = 'auto';
-    selectedFiles = [];
-    updateFileList();
-}
-
-// ============================================
-// DELETE PROJECT
-// ============================================
-function openDeleteModal(projectId) {
-    projectToDelete = projectId;
-    document.getElementById('deleteModal').classList.add('active');
-    document.body.style.overflow = 'hidden';
-}
-
-function closeDeleteModal() {
-    document.getElementById('deleteModal').classList.remove('active');
-    document.body.style.overflow = 'auto';
-    projectToDelete = null;
-}
-
-function confirmDeleteProject() {
-    if (!projectToDelete) return;
-    let projects = JSON.parse(localStorage.getItem(STORAGE_KEYS.PROJECTS) || '[]');
-    projects = projects.filter(p => p.id !== projectToDelete);
-    localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
-    closeDeleteModal();
-    loadProjects();
-    alert('✅ Progetto eliminato!');
-}
-
-document.getElementById('confirmDeleteBtn')?.addEventListener('click', confirmDeleteProject);
-
-// ============================================
-// UPLOAD FILE
-// ============================================
-const uploadArea = document.getElementById('uploadArea');
-const fileInput = document.getElementById('fileInput');
-
-if (uploadArea && fileInput) {
-    uploadArea.addEventListener('click', () => fileInput.click());
-    uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.style.borderColor = '#8B5CF6'; });
-    uploadArea.addEventListener('dragleave', () => { uploadArea.style.borderColor = ''; });
-    uploadArea.addEventListener('drop', (e) => {
-        e.preventDefault();
-        uploadArea.style.borderColor = '';
-        addFiles(e.dataTransfer.files);
-    });
-    fileInput.addEventListener('change', (e) => addFiles(e.target.files));
-}
-
-function addFiles(files) {
-    selectedFiles = [...selectedFiles, ...Array.from(files)];
-    updateFileList();
-}
-
-function updateFileList() {
-    const container = document.getElementById('fileList');
-    if (!container) return;
-    container.innerHTML = selectedFiles.map((file, index) => `
-        <div class="file-item">
-            <span>📄 ${file.name} (${formatFileSize(file.size)})</span>
-            <button onclick="removeFile(${index})">✕</button>
-        </div>
-    `).join('');
-}
-
-function removeFile(index) {
-    selectedFiles.splice(index, 1);
-    updateFileList();
-}
-
-function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / 1048576).toFixed(1) + ' MB';
-}
-
-// ============================================
-// GENERATE CONTENT
-// ============================================
-async function generateContent() {
-    const textInput = document.getElementById('textInput')?.value.trim() || '';
-    const customPrompt = document.getElementById('customPrompt')?.value.trim() || '';
-    const link = document.getElementById('linkInput')?.value.trim() || '';
-    const includeImages = document.getElementById('includeImages')?.checked || false;
-    const user = getCurrentUser();
-    
-    if (!textInput && selectedFiles.length === 0 && !link) {
-        alert('⚠️ Inserisci testo, carica file o incolla link.');
-        return;
-    }
-    
-    if (!serverOnline) {
-        alert('🔴 Server AI non attivo.');
-        return;
-    }
-    
-    // Chiudi modal e mostra loading full page
-    closeModal();
-    showFullpageLoading();
-    setLoadingStatus('Analisi del contenuto...');
-    
-    try {
-        await new Promise(resolve => setTimeout(resolve, 400));
-        setLoadingStatus('🧠 L\'AI sta elaborando...');
-        
-        const content = await callColabBackend(currentService, textInput, selectedFiles, link, customPrompt, includeImages);
-        
-        setLoadingStatus('✅ Quasi pronto...');
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        hideFullpageLoading();
-        showResultFullpage(content, currentService);
-        
-        saveProject(user.username, currentService, content);
-        
-        const users = getUsers();
-        const userIndex = users.findIndex(u => u.id === user.id);
-        if (userIndex !== -1) {
-            users[userIndex].projectCount = (users[userIndex].projectCount || 0) + 1;
-            saveUsers(users);
-            setCurrentUser(users[userIndex]);
-        }
-        
-    } catch (error) {
-        console.error('Generation error:', error);
-        hideFullpageLoading();
-        alert('🔴 Errore: ' + error.message);
-    }
-}
-
-async function callColabBackend(service, textInput, files, link, customPrompt, includeImages) {
-    const formData = new FormData();
-    formData.append('service', service);
-    formData.append('text_input', textInput);
-    formData.append('custom_prompt', customPrompt);
-    formData.append('include_images', includeImages.toString());
-    if (link) formData.append('link', link);
-    
-    for (const file of files) {
-        formData.append('files', file);
-    }
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 180000);
-    
-    try {
-        const response = await fetch(`${CONFIG.COLAB_URL}/api/generate`, {
-            method: 'POST',
-            body: formData,
-            signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Errore server: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        if (!data.content) {
-            throw new Error('Nessun contenuto ricevuto');
-        }
-        
-        return data.content;
-        
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            throw new Error('Timeout: riprova con meno testo.');
-        }
-        throw error;
-    }
-}
-
-// ============================================
-// PROJECT MANAGEMENT
-// ============================================
-function saveProject(userName, service, content) {
-    const projects = JSON.parse(localStorage.getItem(STORAGE_KEYS.PROJECTS) || '[]');
-    projects.unshift({
-        id: Date.now(),
-        userName,
-        service,
-        content,
-        date: new Date().toISOString()
-    });
-    localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects.slice(0, 50)));
-    loadProjects();
-}
-
-function loadProjects() {
-    const user = getCurrentUser();
-    if (!user) return;
-    
-    const projects = JSON.parse(localStorage.getItem(STORAGE_KEYS.PROJECTS) || '[]');
-    const userProjects = projects.filter(p => p.userName === user.username);
-    const grid = document.getElementById('projectsGrid');
-    
-    if (!grid) return;
-    
-    if (userProjects.length === 0) {
-        grid.innerHTML = '<p class="empty-state">📭 Nessun progetto ancora.</p>';
-        return;
-    }
-    
-    grid.innerHTML = userProjects.slice(0, 12).map(project => `
-        <div class="project-card">
-            <div onclick="viewProject(${project.id})" style="cursor:pointer;">
-                <h4>${getServiceIcon(project.service)} ${getServiceName(project.service)}</h4>
-                <p class="project-meta">${formatDate(project.date)}</p>
-                <p class="project-preview">${escapeHtml(project.content.substring(0, 100))}...</p>
-            </div>
-            <button class="btn-delete-project" onclick="event.stopPropagation(); openDeleteModal(${project.id})">🗑️</button>
-        </div>
-    `).join('');
-}
-
-function viewProject(id) {
-    const projects = JSON.parse(localStorage.getItem(STORAGE_KEYS.PROJECTS) || '[]');
-    const project = projects.find(p => p.id === id);
-    if (project) {
-        showResultFullpage(project.content, project.service);
-    }
-}
-
-function getServiceName(service) {
-    return { 'summary': 'Riassunto', 'mindmap': 'Mappa Concettuale', 'quiz': 'Quiz' }[service] || service;
-}
-
-function getServiceIcon(service) {
-    return { 'summary': '📝', 'mindmap': '🗺️', 'quiz': '❓' }[service] || '📄';
-}
-
-function formatDate(dateString) {
-    return new Date(dateString).toLocaleDateString('it-IT', {
-        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-    });
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>
