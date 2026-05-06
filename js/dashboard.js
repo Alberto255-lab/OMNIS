@@ -8,6 +8,8 @@ let currentService = '';
 let selectedFiles = [];
 let serverOnline = false;
 let projectToDelete = null;
+let _lastGeneratedContent = null;
+let _lastGeneratedService = null;
 
 // ============================================
 // SERVER STATUS CHECK
@@ -35,10 +37,6 @@ async function checkServerStatus() {
         if (response.ok) {
             const data = await response.json();
             updateServerUI(true, `🟢 Online - Pronto`);
-            const modelInfo = document.getElementById('serverModelInfo');
-            if (modelInfo) {
-                modelInfo.textContent = `Backend Hugging Face | Pronto a generare contenuti`;
-            }
             return true;
         } else {
             updateServerUI(false, '🔴 Server Offline');
@@ -72,6 +70,117 @@ function updateServerUI(online, message) {
     }
 }
 
+// ============================================
+// FULL PAGE LOADING
+// ============================================
+function showFullpageLoading() {
+    if (!document.getElementById('loadingFullpage')) {
+        const html = `
+            <div class="loading-fullpage" id="loadingFullpage">
+                <div class="spinner"></div>
+                <span class="loading-sparkles">✨</span>
+                <h2>OMNIS sta generando...</h2>
+                <p id="loadingStatus">Analisi del contenuto in corso</p>
+                <div class="loading-progress">
+                    <div class="loading-progress-bar"></div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', html);
+    }
+    document.getElementById('loadingFullpage').classList.add('active');
+}
+
+function hideFullpageLoading() {
+    const el = document.getElementById('loadingFullpage');
+    if (el) el.classList.remove('active');
+}
+
+function setLoadingStatus(text) {
+    const el = document.getElementById('loadingStatus');
+    if (el) el.textContent = text;
+}
+
+// ============================================
+// FULL PAGE RESULT
+// ============================================
+function showResultFullpage(content, service) {
+    const old = document.getElementById('resultFullpage');
+    if (old) old.remove();
+    
+    const names = {
+        'summary': '📝 Riassunto',
+        'mindmap': '🗺️ Mappa Concettuale',
+        'quiz': '❓ Quiz'
+    };
+    
+    const html = `
+        <div class="result-fullpage" id="resultFullpage">
+            <div class="result-overlay" onclick="closeResultFullpage()"></div>
+            <div class="result-page-content">
+                <div class="result-page-header">
+                    <h2>${names[service] || 'Risultato'}</h2>
+                    <div class="result-page-actions">
+                        <button class="btn-icon" onclick="copyResultFullpage()">📋</button>
+                        <button class="btn-icon" onclick="downloadResultFullpage()">📄</button>
+                        <button class="btn-icon" onclick="shareResultFullpage()">📤</button>
+                        <button class="btn-icon" onclick="closeResultFullpage()">✕</button>
+                    </div>
+                </div>
+                <div class="result-page-body">
+                    <pre class="result-page-text">${escapeHtml(content)}</pre>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', html);
+    _lastGeneratedContent = content;
+    _lastGeneratedService = service;
+}
+
+function closeResultFullpage() {
+    const el = document.getElementById('resultFullpage');
+    if (el) el.remove();
+}
+
+function copyResultFullpage() {
+    if (_lastGeneratedContent) {
+        navigator.clipboard.writeText(_lastGeneratedContent).then(() => alert('✅ Copiato!'));
+    }
+}
+
+function downloadResultFullpage() {
+    if (_lastGeneratedContent) {
+        const blob = new Blob([_lastGeneratedContent], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `omnis-${_lastGeneratedService || 'content'}-${Date.now()}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+}
+
+function shareResultFullpage() {
+    if (_lastGeneratedContent && confirm('📤 Condividere nella Gazzetta?')) {
+        const user = getCurrentUser();
+        const gazzetta = JSON.parse(localStorage.getItem(STORAGE_KEYS.GAZZETTA) || '[]');
+        gazzetta.unshift({
+            id: Date.now(),
+            userName: user.username,
+            service: _lastGeneratedService,
+            content: _lastGeneratedContent,
+            date: new Date().toISOString()
+        });
+        localStorage.setItem(STORAGE_KEYS.GAZZETTA, JSON.stringify(gazzetta.slice(0, 100)));
+        alert('✅ Condiviso!');
+    }
+}
+
+// ============================================
+// INIT
+// ============================================
 document.addEventListener('DOMContentLoaded', async () => {
     updateNavbar();
     loadProjects();
@@ -81,6 +190,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.key === 'Escape') {
             closeModal();
             closeDeleteModal();
+            closeResultFullpage();
         }
     });
 });
@@ -90,21 +200,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ============================================
 function openModal(service) {
     if (!serverOnline) {
-        alert('⚠️ Il server AI non è attivo.\n\nControlla lo stato o attendi il riavvio automatico.');
+        alert('⚠️ Il server AI non è attivo.');
         return;
     }
     
     currentService = service;
     const modal = document.getElementById('uploadModal');
-    const title = document.getElementById('modalTitle');
-    
     const titles = {
         'summary': '📝 Crea Riassunto',
         'mindmap': '🗺️ Crea Mappa Concettuale',
         'quiz': '❓ Crea Quiz'
     };
     
-    title.textContent = titles[service] || 'Crea Contenuto';
+    document.getElementById('modalTitle').textContent = titles[service] || 'Crea Contenuto';
     modal.classList.add('active');
     document.body.style.overflow = 'hidden';
     
@@ -127,7 +235,7 @@ function closeModal() {
 }
 
 // ============================================
-// DELETE PROJECT MODAL
+// DELETE PROJECT
 // ============================================
 function openDeleteModal(projectId) {
     projectToDelete = projectId;
@@ -143,11 +251,9 @@ function closeDeleteModal() {
 
 function confirmDeleteProject() {
     if (!projectToDelete) return;
-    
     let projects = JSON.parse(localStorage.getItem(STORAGE_KEYS.PROJECTS) || '[]');
     projects = projects.filter(p => p.id !== projectToDelete);
     localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
-    
     closeDeleteModal();
     loadProjects();
     alert('✅ Progetto eliminato!');
@@ -201,7 +307,7 @@ function formatFileSize(bytes) {
 }
 
 // ============================================
-// GENERATE CONTENT - INPUT FLESSIBILI
+// GENERATE CONTENT
 // ============================================
 async function generateContent() {
     const textInput = document.getElementById('textInput')?.value.trim() || '';
@@ -210,40 +316,32 @@ async function generateContent() {
     const includeImages = document.getElementById('includeImages')?.checked || false;
     const user = getCurrentUser();
     
-    // INPUT FLESSIBILE: testo OPPURE file OPPURE link (almeno uno)
     if (!textInput && selectedFiles.length === 0 && !link) {
-        alert('⚠️ Inserisci del testo, carica un file o incolla un link per continuare.');
+        alert('⚠️ Inserisci testo, carica file o incolla link.');
         return;
     }
     
     if (!serverOnline) {
-        alert('🔴 Il server AI non è attivo.');
+        alert('🔴 Server AI non attivo.');
         return;
     }
     
-    const generateBtn = document.getElementById('generateBtn');
-    const loadingBlock = document.getElementById('loadingBlock');
-    const errorBlock = document.getElementById('errorBlock');
-    const resultSection = document.getElementById('resultSection');
-    
-    generateBtn.style.display = 'none';
-    loadingBlock.style.display = 'block';
-    errorBlock.style.display = 'none';
-    resultSection.style.display = 'none';
+    // Chiudi modal e mostra loading full page
+    closeModal();
+    showFullpageLoading();
+    setLoadingStatus('Analisi del contenuto...');
     
     try {
-        const content = await callColabBackend(
-            currentService, 
-            textInput,
-            selectedFiles, 
-            link, 
-            customPrompt, 
-            includeImages
-        );
+        await new Promise(resolve => setTimeout(resolve, 400));
+        setLoadingStatus('🧠 L\'AI sta elaborando...');
         
-        loadingBlock.style.display = 'none';
-        resultSection.style.display = 'block';
-        document.getElementById('resultContent').textContent = content;
+        const content = await callColabBackend(currentService, textInput, selectedFiles, link, customPrompt, includeImages);
+        
+        setLoadingStatus('✅ Quasi pronto...');
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        hideFullpageLoading();
+        showResultFullpage(content, currentService);
         
         saveProject(user.username, currentService, content);
         
@@ -257,15 +355,11 @@ async function generateContent() {
         
     } catch (error) {
         console.error('Generation error:', error);
-        loadingBlock.style.display = 'none';
-        errorBlock.style.display = 'block';
-        generateBtn.style.display = 'block';
+        hideFullpageLoading();
+        alert('🔴 Errore: ' + error.message);
     }
 }
 
-// ============================================
-// CHIAMATA REALE AL BACKEND
-// ============================================
 async function callColabBackend(service, textInput, files, link, customPrompt, includeImages) {
     const formData = new FormData();
     formData.append('service', service);
@@ -279,7 +373,7 @@ async function callColabBackend(service, textInput, files, link, customPrompt, i
     }
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000);
+    const timeoutId = setTimeout(() => controller.abort(), 180000);
     
     try {
         const response = await fetch(`${CONFIG.COLAB_URL}/api/generate`, {
@@ -292,20 +386,20 @@ async function callColabBackend(service, textInput, files, link, customPrompt, i
         
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Server error: ${response.status}`);
+            throw new Error(errorData.error || `Errore server: ${response.status}`);
         }
         
         const data = await response.json();
         
-        if (!data.content && !data.result) {
-            throw new Error('Nessun contenuto ricevuto dal server');
+        if (!data.content) {
+            throw new Error('Nessun contenuto ricevuto');
         }
         
-        return data.content || data.result;
+        return data.content;
         
     } catch (error) {
         if (error.name === 'AbortError') {
-            throw new Error('Timeout: Il server ha impiegato troppo tempo. Riprova.');
+            throw new Error('Timeout: riprova con meno testo.');
         }
         throw error;
     }
@@ -338,7 +432,7 @@ function loadProjects() {
     if (!grid) return;
     
     if (userProjects.length === 0) {
-        grid.innerHTML = '<p class="empty-state">📭 Nessun progetto ancora. Inizia a creare!</p>';
+        grid.innerHTML = '<p class="empty-state">📭 Nessun progetto ancora.</p>';
         return;
     }
     
@@ -349,9 +443,7 @@ function loadProjects() {
                 <p class="project-meta">${formatDate(project.date)}</p>
                 <p class="project-preview">${escapeHtml(project.content.substring(0, 100))}...</p>
             </div>
-            <button class="btn-delete-project" onclick="event.stopPropagation(); openDeleteModal(${project.id})" title="Elimina progetto">
-                🗑️
-            </button>
+            <button class="btn-delete-project" onclick="event.stopPropagation(); openDeleteModal(${project.id})">🗑️</button>
         </div>
     `).join('');
 }
@@ -360,25 +452,16 @@ function viewProject(id) {
     const projects = JSON.parse(localStorage.getItem(STORAGE_KEYS.PROJECTS) || '[]');
     const project = projects.find(p => p.id === id);
     if (project) {
-        currentService = project.service;
-        document.getElementById('modalTitle').textContent = getServiceName(project.service);
-        document.getElementById('uploadModal').classList.add('active');
-        document.getElementById('resultContent').textContent = project.content;
-        document.getElementById('resultSection').style.display = 'block';
-        document.getElementById('generateBtn').style.display = 'none';
-        document.getElementById('errorBlock').style.display = 'none';
-        document.getElementById('loadingBlock').style.display = 'none';
+        showResultFullpage(project.content, project.service);
     }
 }
 
 function getServiceName(service) {
-    const names = { 'summary': 'Riassunto', 'mindmap': 'Mappa Concettuale', 'quiz': 'Quiz' };
-    return names[service] || service;
+    return { 'summary': 'Riassunto', 'mindmap': 'Mappa Concettuale', 'quiz': 'Quiz' }[service] || service;
 }
 
 function getServiceIcon(service) {
-    const icons = { 'summary': '📝', 'mindmap': '🗺️', 'quiz': '❓' };
-    return icons[service] || '📄';
+    return { 'summary': '📝', 'mindmap': '🗺️', 'quiz': '❓' }[service] || '📄';
 }
 
 function formatDate(dateString) {
@@ -391,46 +474,4 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
-}
-
-// ============================================
-// COPY, DOWNLOAD, SHARE
-// ============================================
-function copyResult() {
-    const content = document.getElementById('resultContent')?.textContent;
-    if (content) {
-        navigator.clipboard.writeText(content).then(() => alert('✅ Copiato negli appunti!'));
-    }
-}
-
-function downloadResult() {
-    const content = document.getElementById('resultContent')?.textContent;
-    if (content) {
-        const blob = new Blob([content], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `omnis-${currentService}-${Date.now()}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
-    }
-}
-
-function shareResult() {
-    const content = document.getElementById('resultContent')?.textContent;
-    if (!content) return;
-    
-    if (confirm('📤 Condividere questo progetto nella Gazzetta? Sarà visibile a tutti gli studenti.')) {
-        const user = getCurrentUser();
-        const gazzetta = JSON.parse(localStorage.getItem(STORAGE_KEYS.GAZZETTA) || '[]');
-        gazzetta.unshift({
-            id: Date.now(),
-            userName: user.username,
-            service: currentService,
-            content,
-            date: new Date().toISOString()
-        });
-        localStorage.setItem(STORAGE_KEYS.GAZZETTA, JSON.stringify(gazzetta.slice(0, 100)));
-        alert('✅ Progetto condiviso nella Gazzetta!');
-    }
 }
