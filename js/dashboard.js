@@ -114,6 +114,11 @@ function showResultFullpage(content, service) {
         'quiz': '❓ Quiz'
     };
     
+    const isMindmap = service === 'mindmap';
+    const contentHTML = isMindmap 
+        ? content 
+        : `<pre class="result-page-text">${escapeHtml(content)}</pre>`;
+    
     const html = `
         <div class="result-fullpage" id="resultFullpage">
             <div class="result-overlay" onclick="closeResultFullpage()"></div>
@@ -128,7 +133,7 @@ function showResultFullpage(content, service) {
                     </div>
                 </div>
                 <div class="result-page-body">
-                    <pre class="result-page-text">${escapeHtml(content)}</pre>
+                    ${contentHTML}
                 </div>
             </div>
         </div>
@@ -137,45 +142,6 @@ function showResultFullpage(content, service) {
     document.body.insertAdjacentHTML('beforeend', html);
     _lastGeneratedContent = content;
     _lastGeneratedService = service;
-}
-
-function closeResultFullpage() {
-    const el = document.getElementById('resultFullpage');
-    if (el) el.remove();
-}
-
-function copyResultFullpage() {
-    if (_lastGeneratedContent) {
-        navigator.clipboard.writeText(_lastGeneratedContent).then(() => alert('✅ Copiato!'));
-    }
-}
-
-function downloadResultFullpage() {
-    if (_lastGeneratedContent) {
-        const blob = new Blob([_lastGeneratedContent], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `omnis-${_lastGeneratedService || 'content'}-${Date.now()}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
-    }
-}
-
-function shareResultFullpage() {
-    if (_lastGeneratedContent && confirm('📤 Condividere nella Gazzetta?')) {
-        const user = getCurrentUser();
-        const gazzetta = JSON.parse(localStorage.getItem(STORAGE_KEYS.GAZZETTA) || '[]');
-        gazzetta.unshift({
-            id: Date.now(),
-            userName: user.username,
-            service: _lastGeneratedService,
-            content: _lastGeneratedContent,
-            date: new Date().toISOString()
-        });
-        localStorage.setItem(STORAGE_KEYS.GAZZETTA, JSON.stringify(gazzetta.slice(0, 100)));
-        alert('✅ Condiviso!');
-    }
 }
 
 // ============================================
@@ -335,7 +301,15 @@ async function generateContent() {
         await new Promise(resolve => setTimeout(resolve, 400));
         setLoadingStatus('🧠 L\'AI sta elaborando...');
         
-        const content = await callColabBackend(currentService, textInput, selectedFiles, link, customPrompt, includeImages);
+        let content;
+
+if (currentService === 'mindmap') {
+    // Per la mappa: chiama API mindmap-image che restituisce PNG
+    content = await callColabBackendMindmap(textInput, selectedFiles, link, customPrompt);
+} else {
+    // Per riassunto e quiz: API generate normale
+    content = await callColabBackend(currentService, textInput, selectedFiles, link, customPrompt, includeImages);
+}
         
         setLoadingStatus('✅ Quasi pronto...');
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -474,4 +448,45 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+
+async function callColabBackendMindmap(textInput, files, link, customPrompt) {
+    const formData = new FormData();
+    formData.append('text_input', textInput);
+    formData.append('custom_prompt', customPrompt);
+    if (link) formData.append('link', link);
+    
+    for (const file of files) {
+        formData.append('files', file);
+    }
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 180000);
+    
+    try {
+        const response = await fetch(`${CONFIG.COLAB_URL}/api/mindmap-image`, {
+            method: 'POST',
+            body: formData,
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+            throw new Error('Errore generazione mappa');
+        }
+        
+        const data = await response.json();
+        
+        if (!data.image_base64) {
+            throw new Error('Nessuna immagine ricevuta');
+        }
+        
+        // Restituisce HTML con immagine incorporata
+        return `<img src="data:image/png;base64,${data.image_base64}" style="max-width:100%;border-radius:12px;" alt="Mappa Concettuale">`;
+        
+    } catch (error) {
+        throw error;
+    }
 }
