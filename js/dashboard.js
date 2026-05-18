@@ -1,5 +1,5 @@
 // ============================================
-// OMNIS Dashboard - REAL BACKEND ONLY
+// OMNIS Dashboard - COMPLETO
 // ============================================
 
 if (!requireAuth()) throw new Error('Auth required');
@@ -185,23 +185,13 @@ function closeResultFullpage() {
 
 function downloadResultFullpage() {
     if (!_lastGeneratedContent) return;
-    
-    if (_lastGeneratedService === 'mindmap') {
-        // Scarica PNG
-        const link = document.createElement('a');
-        link.download = `mappa-omnis-${Date.now()}.png`;
-        link.href = _lastGeneratedContent.match(/src="([^"]+)"/)?.[1] || _lastGeneratedContent;
-        link.click();
-    } else {
-        // Scarica TXT
-        const blob = new Blob([_lastGeneratedContent], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `omnis-${_lastGeneratedService || 'content'}-${Date.now()}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
-    }
+    const blob = new Blob([_lastGeneratedContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `omnis-${_lastGeneratedService || 'content'}-${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
 function shareResultFullpage() {
@@ -454,8 +444,6 @@ async function callColabBackend(service, textInput, files, link, customPrompt, i
 }
 
 async function callColabBackendMindmap(textInput, files, link, customPrompt) {
-    console.log('🗺️ MINDMAP REQUEST');
-    
     const formData = new FormData();
     formData.append('text_input', textInput || 'testo di default');
     formData.append('custom_prompt', customPrompt || '');
@@ -478,20 +466,17 @@ async function callColabBackendMindmap(textInput, files, link, customPrompt) {
         clearTimeout(timeoutId);
         
         const data = await response.json();
-        console.log('📡 Response success:', data.success);
         
         if (!data.success) {
             throw new Error(data.error || 'Errore server');
         }
         
-        // Se c'è immagine base64, usala
-        if (data.image_base64) {
-            return `<img src="data:image/png;base64,${data.image_base64}" style="max-width:100%;border-radius:12px;" alt="Mappa">`;
-        }
-        
-        // Se c'è mermaid_code, renderizzalo nel frontend
         if (data.mermaid_code) {
             return renderMermaidToHTML(data.mermaid_code);
+        }
+        
+        if (data.image_base64) {
+            return `<img src="data:image/png;base64,${data.image_base64}" style="max-width:100%;border-radius:12px;" alt="Mappa">`;
         }
         
         throw new Error('Nessun contenuto ricevuto');
