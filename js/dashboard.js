@@ -12,6 +12,42 @@ let _lastGeneratedContent = null;
 let _lastGeneratedService = null;
 
 // ============================================
+// MERMAID RENDERER
+// ============================================
+function renderMermaidToHTML(mermaidCode) {
+    const id = 'mermaid-' + Date.now();
+    return `
+        <div class="mermaid-container">
+            <pre class="mermaid" id="${id}">${mermaidCode}</pre>
+        </div>
+        <script>
+            (function() {
+                if (typeof mermaid !== 'undefined') {
+                    mermaid.run({ querySelector: '#${id}' });
+                } else {
+                    document.getElementById('${id}').textContent = 'Caricamento diagramma...';
+                    var script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+                    script.onload = function() {
+                        mermaid.initialize({ 
+                            startOnLoad: false,
+                            theme: 'dark',
+                            themeVariables: {
+                                primaryColor: '#8B5CF6',
+                                primaryTextColor: '#fff',
+                                lineColor: '#8B5CF6'
+                            }
+                        });
+                        mermaid.run({ querySelector: '#${id}' });
+                    };
+                    document.head.appendChild(script);
+                }
+            })();
+        </script>
+    `;
+}
+
+// ============================================
 // SERVER STATUS CHECK
 // ============================================
 async function checkServerStatus() {
@@ -418,10 +454,10 @@ async function callColabBackend(service, textInput, files, link, customPrompt, i
 }
 
 async function callColabBackendMindmap(textInput, files, link, customPrompt) {
-    console.log('🗺️ MINDMAP REQUEST - textInput length:', textInput.length);
+    console.log('🗺️ MINDMAP REQUEST');
     
     const formData = new FormData();
-    formData.append('text_input', textInput || 'testo di default per mappa');
+    formData.append('text_input', textInput || 'testo di default');
     formData.append('custom_prompt', customPrompt || '');
     if (link) formData.append('link', link);
     
@@ -433,8 +469,6 @@ async function callColabBackendMindmap(textInput, files, link, customPrompt) {
     const timeoutId = setTimeout(() => controller.abort(), 180000);
     
     try {
-        console.log('📡 Calling:', `${CONFIG.COLAB_URL}/api/mindmap-image`);
-        
         const response = await fetch(`${CONFIG.COLAB_URL}/api/mindmap-image`, {
             method: 'POST',
             body: formData,
@@ -443,20 +477,24 @@ async function callColabBackendMindmap(textInput, files, link, customPrompt) {
         
         clearTimeout(timeoutId);
         
-        console.log('📡 Response status:', response.status);
+        const data = await response.json();
+        console.log('📡 Response success:', data.success);
         
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Server error:', errorText);
-            throw new Error('Errore generazione mappa (status: ' + response.status + ')');
+        if (!data.success) {
+            throw new Error(data.error || 'Errore server');
         }
         
-        const data = await response.json();
-        console.log('✅ Success:', data.success, '| Image base64 length:', data.image_base64?.length || 0);
+        // Se c'è immagine base64, usala
+        if (data.image_base64) {
+            return `<img src="data:image/png;base64,${data.image_base64}" style="max-width:100%;border-radius:12px;" alt="Mappa">`;
+        }
         
-        if (!data.image_base64) throw new Error('Nessuna immagine ricevuta');
+        // Se c'è mermaid_code, renderizzalo nel frontend
+        if (data.mermaid_code) {
+            return renderMermaidToHTML(data.mermaid_code);
+        }
         
-        return `<img src="data:image/png;base64,${data.image_base64}" style="max-width:100%;border-radius:12px;" alt="Mappa Concettuale">`;
+        throw new Error('Nessun contenuto ricevuto');
         
     } catch (error) {
         console.error('❌ MINDMAP ERROR:', error);
@@ -500,7 +538,7 @@ function loadProjects() {
             <div onclick="viewProject(${project.id})" style="cursor:pointer;">
                 <h4>${getServiceIcon(project.service)} ${getServiceName(project.service)}</h4>
                 <p class="project-meta">${formatDate(project.date)}</p>
-                <p class="project-preview">${project.service === 'mindmap' ? '[Immagine mappa]' : escapeHtml(project.content.substring(0, 100)) + '...'}</p>
+                <p class="project-preview">${project.service === 'mindmap' ? '[Mappa]' : escapeHtml(project.content.substring(0, 100)) + '...'}</p>
             </div>
             <button class="btn-delete-project" onclick="event.stopPropagation(); openDeleteModal(${project.id})">🗑️</button>
         </div>
